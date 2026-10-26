@@ -180,31 +180,61 @@ def formatar(lote, avaliacao, motivo_aviso: str, valores: Optional[dict] = None)
     return "\n".join(linhas)
 
 
+TELEGRAM_API = "https://api.telegram.org/bot{token}/{metodo}"
+
+
+def _telegram(token: str, metodo: str, **payload) -> dict:
+    """Chama a API do Telegram. O erro nunca inclui a URL: ela contém o token."""
+    try:
+        r = requests.post(TELEGRAM_API.format(token=token, metodo=metodo),
+                          json=payload, timeout=15)
+        dados = r.json()
+    except Exception as e:
+        return {"ok": False, "description": f"sem resposta ({type(e).__name__})"}
+    return dados
+
+
+def descobrir_chats(token: str) -> list[dict]:
+    """Quem mandou mensagem pro bot recentemente: [{chat_id, nome}]."""
+    resp = _telegram(token, "getUpdates")
+    if not resp.get("ok"):
+        raise RuntimeError(resp.get("description", "erro desconhecido"))
+    chats = {}
+    for upd in resp.get("result", []):
+        chat = (upd.get("message") or upd.get("channel_post") or {}).get("chat")
+        if chat:
+            nome = chat.get("title") or " ".join(
+                p for p in (chat.get("first_name"), chat.get("last_name")) if p
+            )
+            chats[chat["id"]] = {"chat_id": chat["id"], "nome": nome, "tipo": chat.get("type")}
+    return list(chats.values())
+
+
 class Avisador:
     def __init__(self, cfg: dict):
         self.cfg = cfg or {}
+        # token/chat_id podem vir do ambiente pra não irem pro git
+        self.telegram = dict(self.cfg.get("telegram") or {})
+        self.telegram.setdefault("token", os.environ.get("TELEGRAM_TOKEN"))
+        self.telegram.setdefault("chat_id", os.environ.get("TELEGRAM_CHAT_ID"))
+
+    def enviar_telegram(self, texto: str) -> Optional[str]:
+        """Devolve None se enviou, ou a descrição do erro."""
+        tg = self.telegram
+        if not (tg.get("token") and tg.get("chat_id")):
+            return "TELEGRAM_TOKEN / TELEGRAM_CHAT_ID não configurados"
+        resp = _telegram(tg["token"], "sendMessage", chat_id=tg["chat_id"],
+                         text=texto[:4000], disable_web_page_preview=True)
+        return None if resp.get("ok") else resp.get("description", "erro desconhecido")
 
     def enviar(self, texto: str) -> None:
         if self.cfg.get("console", True):
             print("\n" + texto + "\n" + "-" * 60)
 
-        # token/chat_id podem vir do ambiente pra não irem pro git
-        tg = dict(self.cfg.get("telegram") or {})
-        tg.setdefault("token", os.environ.get("TELEGRAM_TOKEN"))
-        tg.setdefault("chat_id", os.environ.get("TELEGRAM_CHAT_ID"))
-        if tg.get("token") and tg.get("chat_id"):
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{tg['token']}/sendMessage",
-                    json={
-                        "chat_id": tg["chat_id"],
-                        "text": texto,
-                        "disable_web_page_preview": False,
-                    },
-                    timeout=15,
-                )
-            except Exception as e:
-                log.warning("telegram falhou: %s", e)
+        if self.telegram.get("token") and self.telegram.get("chat_id"):
+            erro = self.enviar_telegram(texto)
+            if erro:
+                log.warning("telegram falhou: %s", erro)
 
         gancho = self.cfg.get("webhook")
         if gancho:

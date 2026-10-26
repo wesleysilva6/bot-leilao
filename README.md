@@ -75,6 +75,19 @@ filtros:
 Lote filtrado continua no banco (sai no `--relatorio`), só não gera aviso. Lote
 sem UF, pátio ou lance identificado passa pelo filtro: na dúvida, o robô avisa.
 
+## Avisos no Telegram
+
+1. No Telegram, abra **@BotFather** → `/newbot` → dê um nome e um usuário
+   terminado em `bot`. Ele responde com o **token**.
+2. Grave o token (PowerShell, uma vez só; depois feche e abra o terminal):
+   `setx TELEGRAM_TOKEN "seu-token"`
+3. Abra o seu bot no Telegram, toque em **Iniciar** e mande um "oi".
+4. `python main.py --telegram-chat` → mostra o seu `chat_id`.
+5. `setx TELEGRAM_CHAT_ID "o-numero"` (feche e abra o terminal de novo).
+6. `python main.py --telegram-teste` → deve chegar uma mensagem.
+
+Nunca coloque o token no `config.yaml`: o repositório é público.
+
 ## Instalação
 
 ```bash

@@ -22,7 +22,7 @@ from typing import Optional
 import yaml
 
 from leilao_monitor import fontes as mod_fontes
-from leilao_monitor.estado import Avisador, Memoria, formatar
+from leilao_monitor.estado import Avisador, Memoria, descobrir_chats, formatar
 from leilao_monitor.fipe import Fipe, custo_total
 from leilao_monitor.matcher import Alvo, avaliar, normalizar
 
@@ -173,6 +173,25 @@ def modo_teste(texto: str, cfg: dict) -> None:
     print(json.dumps(av.__dict__, ensure_ascii=False, indent=2))
 
 
+def modo_telegram_chat(cfg: dict) -> int:
+    token = Avisador(cfg.get("avisos", {})).telegram.get("token")
+    if not token:
+        print("defina TELEGRAM_TOKEN primeiro (token que o @BotFather te deu)")
+        return 1
+    try:
+        chats = descobrir_chats(token)
+    except RuntimeError as e:
+        print(f"o Telegram recusou o token: {e}")
+        return 1
+    if not chats:
+        print("nenhuma mensagem encontrada — abra o seu bot no Telegram, "
+              "mande um 'oi' e rode de novo")
+        return 1
+    for c in chats:
+        print(f"chat_id: {c['chat_id']}   ({c['nome']}, {c['tipo']})")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Monitor de leilões de veículos")
     p.add_argument("--config", default="config.yaml")
@@ -182,6 +201,10 @@ def main() -> int:
                    help="exporta tudo que está na memória e sai")
     p.add_argument("--testar", metavar="TEXTO",
                    help="testa as regras contra um título de lote e sai")
+    p.add_argument("--telegram-chat", action="store_true",
+                   help="mostra o chat_id de quem mandou mensagem pro bot e sai")
+    p.add_argument("--telegram-teste", action="store_true",
+                   help="manda uma mensagem de teste pro Telegram e sai")
     args = p.parse_args()
 
     cfg = carregar_config(args.config)
@@ -189,6 +212,14 @@ def main() -> int:
     if args.testar:
         modo_teste(args.testar, cfg)
         return 0
+    if args.telegram_chat:
+        return modo_telegram_chat(cfg)
+    if args.telegram_teste:
+        erro = Avisador(cfg.get("avisos", {})).enviar_telegram(
+            "✅ Robô de leilão conectado. Os avisos de lote vão chegar aqui."
+        )
+        print("mensagem enviada — confira o Telegram" if not erro else f"falhou: {erro}")
+        return 1 if erro else 0
 
     memoria = Memoria(cfg.get("banco", "leiloes.db"))
 
