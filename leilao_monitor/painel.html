@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robô de Leilão</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<style>
+  :root {
+    --fundo: #f4f5f7;
+    --cartao: #ffffff;
+    --texto: #1c1f24;
+    --suave: #626a75;
+    --borda: #e2e5ea;
+    --verde: #1f9d55;
+    --verde-fundo: #e5f6ec;
+    --vermelho: #c9372c;
+    --vermelho-fundo: #fbeae8;
+    --azul: #2563eb;
+    --azul-hover: #1d4ed8;
+    --cinza-fundo: #eef0f3;
+    --log-fundo: #15181d;
+    --log-texto: #c9d1d9;
+    --sombra: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 16px rgba(16, 24, 40, .06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fundo: #0f1115;
+      --cartao: #181b21;
+      --texto: #e7e9ec;
+      --suave: #98a1ad;
+      --borda: #2a2f37;
+      --verde: #3ccf7f;
+      --verde-fundo: #12301f;
+      --vermelho: #f0766b;
+      --vermelho-fundo: #3a1714;
+      --azul: #4f8bff;
+      --azul-hover: #6d9eff;
+      --cinza-fundo: #222730;
+      --log-fundo: #0b0d10;
+      --sombra: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  header .logo { font-size: 32px; }
+  h1 { margin: 0; font-size: 22px; }
+  .sub { color: var(--suave); font-size: 14px; }
+  .cartao {
+    background: var(--cartao);
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--sombra);
+  }
+  h2 { margin: 0 0 12px; font-size: 16px; }
+
+  /* status */
+  .status { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .pilula {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 14px;
+    background: var(--cinza-fundo); color: var(--suave);
+  }
+  .pilula .ponto { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+  .pilula.ligado { background: var(--verde-fundo); color: var(--verde); }
+  .pilula.ligado .ponto { animation: pulsa 1.6s infinite; }
+  @keyframes pulsa { 50% { opacity: .35; } }
+  .detalhe { color: var(--suave); font-size: 13px; margin-top: 6px; }
+
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    border: 1px solid transparent; border-radius: 10px;
+    padding: 10px 18px; transition: background .15s, opacity .15s;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .grande { font-size: 16px; padding: 14px 28px; min-width: 190px; }
+  .ligar { background: var(--verde); color: #fff; }
+  .ligar:hover:not(:disabled) { filter: brightness(1.08); }
+  .desligar { background: var(--vermelho-fundo); color: var(--vermelho); border-color: var(--vermelho); }
+  .primario { background: var(--azul); color: #fff; }
+  .primario:hover:not(:disabled) { background: var(--azul-hover); }
+  .secundario { background: transparent; color: var(--texto); border-color: var(--borda); }
+  .secundario:hover:not(:disabled) { background: var(--cinza-fundo); }
+
+  label.opcao { display: flex; align-items: center; gap: 10px; margin-top: 16px; color: var(--suave); font-size: 14px; cursor: pointer; }
+  label.opcao input { width: 18px; height: 18px; accent-color: var(--azul); }
+
+  /* configuração */
+  details summary { cursor: pointer; font-weight: 600; font-size: 16px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: "▾"; color: var(--suave); transition: transform .15s; }
+  details[open] summary::after { transform: rotate(180deg); }
+  .ok-tag { font-size: 12px; font-weight: 600; color: var(--verde); background: var(--verde-fundo); padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+  .passo { display: grid; grid-template-columns: 28px 1fr; gap: 12px; margin-top: 18px; }
+  .num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--cinza-fundo); color: var(--suave);
+    display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  }
+  .passo p { margin: 2px 0 10px; color: var(--suave); font-size: 14px; }
+  .passo b { color: var(--texto); }
+  .linha { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text], input[type=password] {
+    flex: 1; min-width: 0;
+    font: inherit; color: var(--texto); background: var(--fundo);
+    border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px;
+  }
+  input:focus { outline: 2px solid var(--azul); outline-offset: -1px; }
+  .chats { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .chats button { text-align: left; }
+  code { background: var(--cinza-fundo); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+  a { color: var(--azul); }
+
+  /* log */
+  .log-topo { display: flex; justify-content: space-between; align-items: baseline; }
+  pre {
+    margin: 0; background: var(--log-fundo); color: var(--log-texto);
+    border-radius: 10px; padding: 14px; height: 260px; overflow: auto;
+    font: 12px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  pre .erro { color: #ff8a80; }
+  pre .aviso { color: #ffd479; }
+  pre .info { color: #8bd5a6; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: var(--texto); color: var(--cartao);
+    padding: 12px 18px; border-radius: 10px; font-size: 14px; max-width: calc(100% - 32px);
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.ver { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.erro { background: var(--vermelho); color: #fff; }
+  .rodape { text-align: center; color: var(--suave); font-size: 12px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="logo">🤖</span>
+    <div>
+      <h1>Robô de Leilão</h1>
+      <div class="sub" id="bot-nome">Painel do bot do Telegram</div>
+    </div>
+  </header>
+
+  <section class="cartao">
+    <div class="status">
+      <div>
+        <span class="pilula" id="pilula"><span class="ponto"></span><span id="pilula-texto">Verificando…</span></span>
+        <div class="detalhe" id="status-detalhe">&nbsp;</div>
+      </div>
+      <button class="grande ligar" id="botao" disabled>Ligar bot</button>
+    </div>
+    <label class="opcao">
+      <input type="checkbox" id="auto">
+      Ligar o bot automaticamente sempre que o painel abrir
+    </label>
+  </section>
+
+  <section class="cartao">
+    <details id="config">
+      <summary><span>Configuração do Telegram<span class="ok-tag" id="config-ok" hidden>configurado</span></span></summary>
+
+      <div class="passo">
+        <span class="num">1</span>
+        <div>
+          <p>No Telegram, fale com <b>@BotFather</b>, mande <code>/newbot</code> e cole aqui o <b>token</b> que ele te der.</p>
+          <div class="linha">
+            <input type="password" id="token" placeholder="ex.: 1234567890:AAH…" autocomplete="off">
+            <button class="primario" id="salvar-token">Salvar token</button>
+          </div>
+          <div class="detalhe" id="token-atual"></div>
+        </div>
+      </div>
+
+      <div class="passo">
+        <span class="num">2</span>
+        <div>
+          <p>Abra o seu bot no Telegram, toque em <b>Iniciar</b> e mande um <b>“oi”</b>. Depois clique em descobrir.</p>
+          <div class="linha">
+            <input type="text" id="chat" placeholder="chat_id" inputmode="numeric">
+            <button class="secundario" id="descobrir">Descobrir meu chat_id</button>
+            <button class="primario" id="salvar-chat">Salvar</button>
+          </div>
+          <div class="chats" id="chats"></div>
+        </div>
+      </div>
+
+      <div class="passo">
+        <span class="num">3</span>
+        <div>
+          <p>Confira se chega mensagem no Telegram.</p>
+          <button class="secundario" id="testar">Enviar mensagem de teste</button>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="cartao">
+    <div class="log-topo">
+      <h2>Atividade</h2>
+      <span class="detalhe">atualiza sozinho</span>
+    </div>
+    <pre id="log">Sem atividade ainda. Ligue o bot.</pre>
+  </section>
+
+  <p class="rodape">Este painel só funciona neste computador (127.0.0.1). Fechar a janela preta do painel desliga o bot.</p>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let estado = null;
+  let ocupado = false;
+
+  function toast(msg, erro = false) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = "toast ver" + (erro ? " erro" : "");
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => (t.className = "toast"), 4000);
+  }
+
+  async function api(caminho, dados) {
+    const opcoes = dados === undefined ? {} : {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(dados),
+    };
+    const r = await fetch(caminho, opcoes);
+    const j = await r.json();
+    if (j.erro) throw new Error(j.erro);
+    return j;
+  }
+
+  function horario(segundos) {
+    return new Date(segundos * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function pintarLog(linhas) {
+    const pre = $("log");
+    const noFim = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+    if (!linhas.length) return;
+    pre.innerHTML = linhas.map((l) => {
+      const seguro = l.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      const cls = /ERROR|Traceback|falhou/.test(l) ? "erro" : /WARNING/.test(l) ? "aviso" : /bot no ar|ligado pelo painel/.test(l) ? "info" : "";
+      return cls ? `<span class="${cls}">${seguro}</span>` : seguro;
+    }).join("\n");
+    if (noFim) pre.scrollTop = pre.scrollHeight;
+  }
+
+  function pintar(s) {
+    estado = s;
+    const configurado = Boolean(s.token && s.chat_id);
+    $("pilula").className = "pilula" + (s.rodando ? " ligado" : "");
+    $("pilula-texto").textContent = s.rodando ? "Bot ligado" : "Bot desligado";
+    $("status-detalhe").textContent = s.rodando
+      ? (s.desde ? `rodando desde ${horario(s.desde)} · ` : "") + "mande /menu pro bot no Telegram"
+      : configurado ? "pronto pra ligar" : "configure o Telegram abaixo antes de ligar";
+
+    const b = $("botao");
+    b.textContent = s.rodando ? "Desligar bot" : "Ligar bot";
+    b.className = "grande " + (s.rodando ? "desligar" : "ligar");
+    b.disabled = ocupado || (!s.rodando && !configurado);
+
+    $("auto").checked = s.ligar_ao_abrir;
+    $("config-ok").hidden = !configurado;
+    $("bot-nome").textContent = s.bot_nome ? `Bot ${s.bot_nome}` : "Painel do bot do Telegram";
+    $("token-atual").textContent = s.token ? `Token salvo: ${s.token}` : "";
+    if (!$("chat").value && s.chat_id) $("chat").value = s.chat_id;
+    if (!configurado && !$("config").dataset.mexeu) $("config").open = true;
+    pintarLog(s.log);
+  }
+
+  async function atualizar() {
+    try { pintar(await api("/api/status")); }
+    catch (e) { $("pilula-texto").textContent = "Painel fechado?"; }
+  }
+
+  async function acao(botao, fn) {
+    if (ocupado) return;
+    ocupado = true;
+    const texto = botao.textContent;
+    botao.disabled = true;
+    botao.textContent = "Aguarde…";
+    try { await fn(); }
+    catch (e) { toast(e.message, true); }
+    finally {
+      ocupado = false;
+      botao.textContent = texto;
+      botao.disabled = false;
+      await atualizar();
+    }
+  }
+
+  $("botao").onclick = () => acao($("botao"), async () => {
+    const ligar = !estado.rodando;
+    await api(ligar ? "/api/ligar" : "/api/desligar", {});
+    toast(ligar ? "Bot ligado! Mande /menu pra ele no Telegram." : "Bot desligado.");
+  });
+
+  $("auto").onchange = (e) => api("/api/config", { ligar_ao_abrir: e.target.checked })
+    .then(() => toast(e.target.checked ? "O bot vai ligar sozinho quando o painel abrir." : "Ligar automático desativado."))
+    .catch((err) => toast(err.message, true));
+
+  $("config").addEventListener("toggle", () => ($("config").dataset.mexeu = "1"));
+
+  $("salvar-token").onclick = () => acao($("salvar-token"), async () => {
+    const token = $("token").value.trim();
+    if (!token) throw new Error("Cole o token do BotFather.");
+    const r = await api("/api/config", { token });
+    $("token").value = "";
+    toast(`Token salvo — bot ${r.bot_nome}. Agora o passo 2.`);
+  });
+
+  $("salvar-chat").onclick = () => acao($("salvar-chat"), async () => {
+    const chat = $("chat").value.trim();
+    if (!/^-?\d+$/.test(chat)) throw new Error("O chat_id é um número.");
+    await api("/api/config", { chat_id: chat });
+    toast("chat_id salvo. Teste no passo 3.");
+  });
+
+  $("descobrir").onclick = () => acao($("descobrir"), async () => {
+    const { chats } = await api("/api/descobrir-chat", {});
+    const lista = $("chats");
+    lista.innerHTML = "";
+    if (chats.length === 1) {
+      $("chat").value = chats[0].chat_id;
+      await api("/api/config", { chat_id: chats[0].chat_id });
+      toast(`Achei: ${chats[0].nome || chats[0].chat_id}. chat_id salvo.`);
+      return;
+    }
+    for (const c of chats) {
+      const b = document.createElement("button");
+      b.className = "secundario";
+      b.textContent = `${c.nome || "sem nome"} (${c.tipo}) — ${c.chat_id}`;
+      b.onclick = async () => {
+        $("chat").value = c.chat_id;
+        await api("/api/config", { chat_id: c.chat_id });
+        lista.innerHTML = "";
+        toast("chat_id salvo.");
+        atualizar();
+      };
+      lista.appendChild(b);
+    }
+    toast("Escolha qual conversa é a sua.");
+  });
+
+  $("testar").onclick = () => acao($("testar"), async () => {
+    await api("/api/testar", {});
+    toast("Mensagem enviada — confira o Telegram.");
+  });
+
+  atualizar();
+  setInterval(atualizar, 3000);
+</script>
+</body>
+</html>

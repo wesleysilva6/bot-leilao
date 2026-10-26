@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import time
 from typing import Callable, Optional
 from urllib.parse import quote
 
+from .ambiente import processo_vivo
 from .estado import Avisador, _telegram, formatar
 
 log = logging.getLogger(__name__)
@@ -280,8 +282,12 @@ class Bot:
         self._enviar(*self.tela_menu())
         offset = int(self._ler("offset", "0"))
         log.info("bot no ar — abra o Telegram (ctrl+c pra parar)")
+        painel = int(os.environ.get("PAINEL_PID") or 0)
 
         while True:
+            if painel and not processo_vivo(painel):
+                log.info("painel fechado — desligando o bot")
+                return
             resp = _telegram(self.token, "getUpdates", espera=35, offset=offset, timeout=25,
                              allowed_updates=["message", "callback_query"])
             for upd in resp.get("result", []):

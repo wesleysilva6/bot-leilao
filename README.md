@@ -77,6 +77,24 @@ filtros:
 Lote filtrado continua no banco (sai no `--relatorio`), só não gera aviso. Lote
 sem UF, pátio ou lance identificado passa pelo filtro: na dúvida, o robô avisa.
 
+## Rodar em qualquer máquina (painel)
+
+1. Instale o [Python 3](https://www.python.org/downloads/) — no Windows,
+   marque **"Add python.exe to PATH"**.
+2. Baixe o projeto (`git clone https://github.com/wesleysilva6/bot-leilao`
+   ou **Code → Download ZIP** no GitHub).
+3. Dois cliques em **`iniciar.bat`** (Linux/Mac: `./iniciar.sh`). Ele instala
+   as dependências e abre o painel no navegador.
+4. Na primeira vez, siga os 3 passos de **Configuração do Telegram** na página
+   (token → chat_id → teste). Fica salvo no `.env` daquela máquina.
+5. Clique em **Ligar bot**.
+
+O painel só aceita acesso do próprio computador (127.0.0.1). Fechar a janela
+preta desliga o bot. Marque "Ligar automaticamente" pra ele já subir ligado.
+
+**Um bot por vez:** o mesmo token rodando em duas máquinas faz as duas
+brigarem pelas mensagens. Desligue numa antes de ligar na outra.
+
 ## Avisos no Telegram
 
 1. No Telegram, abra **@BotFather** → `/newbot` → dê um nome e um usuário
@@ -218,6 +236,10 @@ leilao_monitor/fontes.py     adaptadores json / html / arquivo
 leilao_monitor/estado.py     memória SQLite + Telegram/webhook
 leilao_monitor/fipe.py       consulta FIPE com cache + custo total
 leilao_monitor/bot.py        bot do Telegram com menu, busca sob demanda e alertas
+leilao_monitor/painel.py     painel local (liga/desliga o bot, configura o Telegram)
+leilao_monitor/painel.html   a página do painel
+leilao_monitor/ambiente.py   credenciais locais no .env
+iniciar.bat / iniciar.sh     dois cliques: instala dependências e abre o painel
 testes_matcher.py            64 testes (regras, filtros, FIPE, mensagem e bot)
 exemplos/lotes_exemplo.json  lotes fictícios pra validar sem rede
 ```

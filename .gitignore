@@ -14,3 +14,4 @@ config.local.yaml
 
 .playwright-mcp/
 *.log
+bot.pid

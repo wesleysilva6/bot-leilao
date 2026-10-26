@@ -24,6 +24,7 @@ from typing import Optional
 import yaml
 
 from leilao_monitor import fontes as mod_fontes
+from leilao_monitor.ambiente import carregar_env
 from leilao_monitor.bot import Bot
 from leilao_monitor.estado import Avisador, Memoria, descobrir_chats, formatar
 from leilao_monitor.fipe import Fipe, custo_total
@@ -242,7 +243,15 @@ def main() -> int:
                    help="manda uma mensagem de teste pro Telegram e sai")
     p.add_argument("--bot", action="store_true",
                    help="bot do Telegram com menu de busca + alertas automáticos")
+    p.add_argument("--painel", action="store_true",
+                   help="abre o painel no navegador pra configurar e ligar/desligar o bot")
     args = p.parse_args()
+
+    carregar_env()  # credenciais do .env (máquina configurada pelo painel)
+    if args.painel:
+        from leilao_monitor.painel import rodar
+        rodar()
+        return 0
 
     cfg = carregar_config(args.config)
 
