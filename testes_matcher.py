@@ -1,6 +1,7 @@
 """Testes das regras. Roda sem rede: python testes_matcher.py"""
 
 import yaml
+from leilao_monitor.estado import formatar
 from leilao_monitor.fipe import Fipe, custo_total
 from leilao_monitor.fontes import Lote, _preco, extrair_uf
 from main import motivo_silencio
@@ -165,7 +166,26 @@ def main() -> int:
         falhas += 1
         print("FALHOU custo_total")
 
-    total = len(CASOS) + 7 + 1 + 4 + 3 + 5 + 2 + 1
+    # mensagem: HTML escapado, versao texto sem tags, cabe na legenda da foto
+    lote = Lote("freitas", "1", "CIVIC LXR <AUT> & cia", "https://x.com/l?a=1&b=2",
+                local="AV. JUSCELINO K. DE OLIVEIRA, 1350 MARGINAL - SANTA BARBARA D OESTE/SP",
+                preco=30000, comissao_pct=5, despesas=2850, imagem="https://x.com/f.jpg")
+    av = avaliar("HONDA CIVIC LXR 2014/2015. Retomado.", ALVOS, ano_tolerancia=1)
+    msg = formatar(lote, av, "novo", {"custo_total": 34350, "fipe": 70249, "pct_fipe": 48.9},
+                   civic.descricao)
+    for ok, nome in [
+        ("&lt;AUT&gt; &amp; cia" in msg.html, "escape html"),
+        ("<b>" not in msg.texto and "CIVIC LXR <AUT> & cia" in msg.texto, "texto sem tags"),
+        ("https://x.com/l?a=1&b=2" in msg.texto, "link no texto"),
+        ("SANTA BARBARA D OESTE/SP" in msg.texto and "JUSCELINO" not in msg.texto, "local curto"),
+        ("49% da FIPE" in msg.texto and "R$ 34.350" in msg.texto, "valores"),
+        (len(msg.texto) <= 1024 and msg.imagem, "cabe na legenda"),
+    ]:
+        if not ok:
+            falhas += 1
+            print(f"FALHOU mensagem: {nome}\n{msg.texto}")
+
+    total = len(CASOS) + 7 + 1 + 4 + 3 + 5 + 2 + 1 + 6
     print(f"\n{total - falhas}/{total} testes passaram")
     return 1 if falhas else 0
 

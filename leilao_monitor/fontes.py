@@ -42,6 +42,7 @@ class Lote:
     encerramento: str = ""
     local: str = ""
     uf: str = ""
+    imagem: str = ""                      # URL da 1ª foto
     comissao_pct: Optional[float] = None  # % do leiloeiro sobre o lance
     despesas: Optional[float] = None      # pátio, documentação, logística (R$)
     bruto: dict = field(default_factory=dict)
@@ -135,6 +136,16 @@ class FonteBase:
 
     def _coletar(self) -> Iterator[Lote]:  # pragma: no cover
         raise NotImplementedError
+
+    def _absoluta(self, url: str) -> str:
+        """'/lote/1' e '//cdn/x.jpg' viram URL completa."""
+        url = (url or "").strip()
+        if url.startswith("//"):
+            return "https:" + url
+        base = self.cfg.get("url_base", "")
+        if url.startswith("/") and base:
+            return base.rstrip("/") + url
+        return url
 
     def detalhar(self, lote: Lote) -> bool:
         """Abre a página do lote e completa descrição, pátio e custos.
@@ -260,16 +271,14 @@ class FonteJSON(FonteBase):
         titulo = _caminho(item, campos.get("titulo", ""), "")
         if not id_lote and not titulo:
             return None
-        url = str(_caminho(item, campos.get("url", ""), "") or "")
-        base = self.cfg.get("url_base", "")
-        if url and base and url.startswith("/"):
-            url = base.rstrip("/") + url
+        url = self._absoluta(str(_caminho(item, campos.get("url", ""), "") or ""))
         return Lote(
             fonte=self.nome,
             id_lote=str(id_lote or titulo)[:120],
             titulo=str(titulo),
             descricao=str(_caminho(item, campos.get("descricao", ""), "") or ""),
             url=url,
+            imagem=self._absoluta(str(_caminho(item, campos.get("imagem", ""), "") or "")),
             preco=_preco(_caminho(item, campos.get("preco", ""))),
             encerramento=str(_caminho(item, campos.get("encerramento", ""), "") or ""),
             local=str(_caminho(item, campos.get("local", ""), "") or ""),
@@ -291,6 +300,7 @@ class FonteHTML(FonteBase):
           descricao: "p.detalhe"
           preco: "span.lance"
           url: {seletor: "a.link", atributo: "href"}
+          imagem: {seletor: "img", atributo: "src"}
           id_lote: {seletor: "", atributo: "data-lote"}
     """
 
@@ -325,16 +335,14 @@ class FonteHTML(FonteBase):
                     titulo = campos.get("titulo") or ""
                     if not titulo:
                         continue
-                    url_lote = campos.get("url") or ""
-                    base = self.cfg.get("url_base", "")
-                    if url_lote.startswith("/") and base:
-                        url_lote = base.rstrip("/") + url_lote
+                    url_lote = self._absoluta(campos.get("url") or "")
                     yield Lote(
                         fonte=self.nome,
                         id_lote=(campos.get("id_lote") or url_lote or titulo)[:120],
                         titulo=titulo,
                         descricao=campos.get("descricao") or "",
                         url=url_lote,
+                        imagem=self._absoluta(campos.get("imagem") or ""),
                         preco=_preco(campos.get("preco")),
                         encerramento=campos.get("encerramento") or "",
                         local=campos.get("local") or "",
@@ -353,7 +361,11 @@ class FonteHTML(FonteBase):
                 return ""
             atributo = seletor.get("atributo")
             if atributo:
-                return str(alvo.get(atributo, "") or "")
+                # lista = primeiro que existir (ex.: [data-src, src] p/ lazy load)
+                for a in atributo if isinstance(atributo, list) else [atributo]:
+                    if alvo.get(a):
+                        return str(alvo.get(a))
+                return ""
             return alvo.get_text(" ", strip=True)
         alvo = item.select_one(seletor)
         return alvo.get_text(" ", strip=True) if alvo else ""
@@ -381,6 +393,7 @@ class FonteArquivo(FonteBase):
                 titulo=str(_caminho(item, campos.get("titulo", "titulo"), "") or ""),
                 descricao=str(_caminho(item, campos.get("descricao", "descricao"), "") or ""),
                 url=str(_caminho(item, campos.get("url", "url"), "") or ""),
+                imagem=str(_caminho(item, campos.get("imagem", "imagem"), "") or ""),
                 preco=_preco(_caminho(item, campos.get("preco", "preco"))),
                 encerramento=str(_caminho(item, campos.get("encerramento", ""), "") or ""),
                 local=str(_caminho(item, campos.get("local", ""), "") or ""),

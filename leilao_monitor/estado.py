@@ -7,10 +7,13 @@ A memória existe pra duas coisas:
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
+import re
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -145,49 +148,119 @@ def _reais(v: float) -> str:
     return f"R$ {v:,.0f}".replace(",", ".")
 
 
-def formatar(lote, avaliacao, motivo_aviso: str, valores: Optional[dict] = None) -> str:
+_STATUS = {
+    "APROVADO": ("✅", "APROVADO"),
+    "VERIFICAR": ("⚠️", "VERIFICAR"),
+    "BLOQUEADO": ("⛔", "BLOQUEADO"),
+}
+_MOTIVO = {"novo": "Novo lote", "preco": "Lance mudou", "status": "Status mudou"}
+_CATEGORIA = {
+    "retomado_financiamento": "Retomado de financiamento",
+    "pequena_monta": "Pequena monta",
+    "conservado": "Bom estado / doc. regular",
+    "monta_alta": "Média/grande monta ou sucata",
+    "remarcacao": "Chassi/motor remarcado",
+}
+
+
+@dataclass
+class Mensagem:
+    html: str                 # Telegram (parse_mode=HTML)
+    imagem: str = ""          # URL da 1ª foto do veículo
+    url: str = ""
+
+    @property
+    def texto(self) -> str:
+        """Versão sem tags, pro console e webhook."""
+        sem_tags = re.sub(r'<a href="([^"]+)">[^<]*</a>', r"\1", self.html)
+        return html.unescape(re.sub(r"<[^>]+>", "", sem_tags))
+
+
+def _item(achado: str) -> str:
+    """"retomado_financiamento: 'financeira'" -> "Retomado de financiamento (financeira)"."""
+    cat, _, trecho = achado.partition(": ")
+    nome = _CATEGORIA.get(cat)
+    if not nome:
+        return achado
+    trecho = trecho.strip("'")
+    return f"{nome} ({trecho})" if trecho else nome
+
+
+def _local_curto(local: str) -> str:
+    """Endereço do pátio vira só a cidade/UF: '..., SP304 - SANTA BARBARA D OESTE/SP'."""
+    local = (local or "").strip()
+    return local.rsplit(" - ", 1)[-1].strip() if " - " in local and len(local) > 40 else local
+
+
+def formatar(lote, avaliacao, motivo_aviso: str, valores: Optional[dict] = None,
+             alvo_descricao: str = "") -> Mensagem:
     valores = valores or {}
-    emoji = {"APROVADO": "✅", "VERIFICAR": "⚠️", "BLOQUEADO": "⛔"}.get(
-        avaliacao.status, "•"
-    )
-    rotulo = {"novo": "NOVO LOTE", "preco": "LANCE ALTERADO", "status": "STATUS MUDOU"}
+    e = html.escape
+    emoji, status = _STATUS.get(avaliacao.status, ("•", avaliacao.status))
+
     linhas = [
-        f"{emoji} {rotulo.get(motivo_aviso, motivo_aviso)} — {avaliacao.status}",
-        f"{lote.titulo}",
-        f"alvo: {avaliacao.alvo_id} | fab: {avaliacao.ano_fab or '?'}",
-        f"fonte: {lote.fonte}" + (f" | {lote.local}" if lote.local else ""),
+        f"{emoji} <b>{status}</b>  ·  {_MOTIVO.get(motivo_aviso, motivo_aviso)}",
+        f"<b>{e(lote.titulo)}</b>",
+        "",
     ]
+
+    modelo = re.sub(r"\s*\(.*\)\s*$", "", alvo_descricao) or avaliacao.alvo_id
+    ano = avaliacao.ano_fab or "?"
+    if avaliacao.ano_mod and avaliacao.ano_mod != avaliacao.ano_fab:
+        ano = f"{ano}/{avaliacao.ano_mod}"
+    linhas.append(f"🚗 {e(modelo)}  ·  {ano}")
+    onde = " · ".join(x for x in (_local_curto(lote.local), lote.fonte) if x)
+    linhas.append(f"📍 {e(onde)}")
+    if lote.encerramento:
+        linhas.append(f"📅 Encerra {e(lote.encerramento)}")
+
+    # bloco de valores
+    valores_linhas = []
     if lote.preco is not None:
-        linhas.append(f"lance: R$ {lote.preco:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    if valores.get("custo_total") and valores["custo_total"] != lote.preco:
-        linhas.append(
-            f"custo estimado: {_reais(valores['custo_total'])} "
-            f"(+{lote.comissao_pct or 0:g}% comissão + {_reais(lote.despesas or 0)} despesas)"
+        valores_linhas.append(f"💰 Lance: <b>{_reais(lote.preco)}</b>")
+    else:
+        valores_linhas.append("💰 Lance: <i>ainda sem lance</i>")
+    custo = valores.get("custo_total")
+    if custo and lote.preco is not None and abs(custo - lote.preco) > 1:
+        valores_linhas.append(
+            f"🧾 Custo total: <b>{_reais(custo)}</b>\n"
+            f"      +{lote.comissao_pct or 0:g}% comissão + {_reais(lote.despesas or 0)} despesas"
         )
     if valores.get("fipe"):
-        pct = f" → custo = {valores['pct_fipe']:.0f}% da FIPE" if valores.get("pct_fipe") else ""
-        linhas.append(f"FIPE: {_reais(valores['fipe'])} ({valores.get('fipe_ref', '')}){pct}")
-    if lote.encerramento:
-        linhas.append(f"encerra: {lote.encerramento}")
-    for s in avaliacao.sinais:
-        linhas.append(f"  + {s}")
-    for o in avaliacao.observacoes:
-        linhas.append(f"  ? {o}")
-    for m in avaliacao.motivos:
-        linhas.append(f"  - {m}")
+        pct = valores.get("pct_fipe")
+        extra = f"  →  <b>{pct:.0f}% da FIPE</b>" if pct else ""
+        valores_linhas.append(f"📊 FIPE: {_reais(valores['fipe'])}{extra}")
+    linhas += ["", *valores_linhas]
+
+    # o que o lote diz
+    for titulo, itens in (
+        ("👍 A favor", avaliacao.sinais),
+        ("🔎 Conferir", avaliacao.observacoes),
+        ("🚫 Bloqueios", avaliacao.motivos),
+    ):
+        if itens:
+            linhas += ["", f"<b>{titulo}</b>", *(f"• {e(_item(i))}" for i in itens)]
+
     if lote.url:
-        linhas.append(lote.url)
-    return "\n".join(linhas)
+        linhas += ["", f'🔗 <a href="{e(lote.url, quote=True)}">Abrir o lote</a>']
+
+    return Mensagem(html="\n".join(linhas), imagem=lote.imagem, url=lote.url)
 
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{metodo}"
 
 
-def _telegram(token: str, metodo: str, **payload) -> dict:
+LIMITE_LEGENDA = 1024  # Telegram: legenda de foto; texto comum vai até 4096
+
+
+def _telegram(token: str, metodo: str, arquivos: Optional[dict] = None, **payload) -> dict:
     """Chama a API do Telegram. O erro nunca inclui a URL: ela contém o token."""
+    url = TELEGRAM_API.format(token=token, metodo=metodo)
     try:
-        r = requests.post(TELEGRAM_API.format(token=token, metodo=metodo),
-                          json=payload, timeout=15)
+        if arquivos:  # upload multipart: campos vão como form-data
+            r = requests.post(url, data=payload, files=arquivos, timeout=30)
+        else:
+            r = requests.post(url, json=payload, timeout=15)
         dados = r.json()
     except Exception as e:
         return {"ok": False, "description": f"sem resposta ({type(e).__name__})"}
@@ -218,27 +291,58 @@ class Avisador:
         self.telegram.setdefault("token", os.environ.get("TELEGRAM_TOKEN"))
         self.telegram.setdefault("chat_id", os.environ.get("TELEGRAM_CHAT_ID"))
 
-    def enviar_telegram(self, texto: str) -> Optional[str]:
-        """Devolve None se enviou, ou a descrição do erro."""
+    def _foto(self, imagem: str, legenda: str) -> dict:
+        """Manda a foto pela URL; se o Telegram não conseguir baixar (CDN
+        bloqueando, extensão estranha), baixa aqui e faz upload."""
+        tg = self.telegram
+        base = {"chat_id": tg["chat_id"], "parse_mode": "HTML"}
+        if legenda:
+            base["caption"] = legenda
+        resp = _telegram(tg["token"], "sendPhoto", photo=imagem, **base)
+        if resp.get("ok"):
+            return resp
+        try:
+            r = requests.get(imagem, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+            r.raise_for_status()
+        except Exception as e:
+            return {"ok": False, "description": f"foto indisponível ({type(e).__name__})"}
+        return _telegram(tg["token"], "sendPhoto", arquivos={"photo": ("foto.jpg", r.content)}, **base)
+
+    def enviar_telegram(self, msg: "Mensagem | str") -> Optional[str]:
+        """Foto do veículo com a mensagem na legenda. Devolve None se enviou,
+        ou a descrição do erro."""
         tg = self.telegram
         if not (tg.get("token") and tg.get("chat_id")):
             return "TELEGRAM_TOKEN / TELEGRAM_CHAT_ID não configurados"
+        if isinstance(msg, str):
+            msg = Mensagem(html=html.escape(msg))
+
+        texto_cabe_na_legenda = len(msg.texto) <= LIMITE_LEGENDA
+        if msg.imagem:
+            resp = self._foto(msg.imagem, msg.html if texto_cabe_na_legenda else "")
+            if resp.get("ok") and texto_cabe_na_legenda:
+                return None
+            if not resp.get("ok"):
+                log.warning("foto não enviada (%s), mandando só o texto", resp.get("description"))
+
         resp = _telegram(tg["token"], "sendMessage", chat_id=tg["chat_id"],
-                         text=texto[:4000], disable_web_page_preview=True)
+                         text=msg.html[:4000], parse_mode="HTML",
+                         disable_web_page_preview=True)
         return None if resp.get("ok") else resp.get("description", "erro desconhecido")
 
-    def enviar(self, texto: str) -> None:
+    def enviar(self, msg: Mensagem) -> None:
         if self.cfg.get("console", True):
-            print("\n" + texto + "\n" + "-" * 60)
+            print("\n" + msg.texto + "\n" + "-" * 60)
 
         if self.telegram.get("token") and self.telegram.get("chat_id"):
-            erro = self.enviar_telegram(texto)
+            erro = self.enviar_telegram(msg)
             if erro:
                 log.warning("telegram falhou: %s", erro)
 
         gancho = self.cfg.get("webhook")
         if gancho:
             try:
-                requests.post(gancho, json={"text": texto}, timeout=15)
+                requests.post(gancho, json={"text": msg.texto, "imagem": msg.imagem,
+                                            "url": msg.url}, timeout=15)
             except Exception as e:
                 log.warning("webhook falhou: %s", e)

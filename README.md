@@ -88,6 +88,11 @@ sem UF, pátio ou lance identificado passa pelo filtro: na dúvida, o robô avis
 
 Nunca coloque o token no `config.yaml`: o repositório é público.
 
+Cada aviso chega como a **1ª foto do veículo** com a mensagem na legenda:
+status, modelo e ano, cidade do pátio, lance, custo total, FIPE, pontos a favor,
+o que conferir e o link do lote. Para pegar a foto de uma fonte nova, configure
+`seletores.imagem` (HTML) ou `campos.imagem` (JSON).
+
 ## Instalação
 
 ```bash

@@ -136,7 +136,8 @@ def passada(cfg: dict, alvos: list[Alvo], memoria: Memoria, avisador: Avisador,
                         log.info("sem aviso (%s): %s", silencio, lote.titulo)
                         contagem["silenciados"] += 1
                         continue
-                    avisador.enviar(formatar(lote, av, mudanca, valores))
+                    avisador.enviar(formatar(lote, av, mudanca, valores,
+                                             por_id[av.alvo_id].descricao))
                     contagem["avisos"] += 1
                 except Exception as e:
                     log.error("erro no lote %s de %s: %s", lote.id_lote, fonte.nome, e)

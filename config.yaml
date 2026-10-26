@@ -134,6 +134,9 @@ fontes:
       url:
         seletor: "a[href*='LoteDetalhes']"
         atributo: href
+      imagem:
+        seletor: "img.cardLote-img"
+        atributo: src
     detalhe:
       inicio: "Descrição completa"
       fim: "Abertura p/ lances"
@@ -166,6 +169,9 @@ fontes:
       url:
         seletor: "a.card__content"
         atributo: href
+      imagem:
+        seletor: "img.card__image"
+        atributo: [data-src, src]   # foto carrega por lazy load
 
   # ---- Copart — NÃO dá pra coletar automaticamente -----------------------
   # O site é protegido por Incapsula (anti-robô): bloqueia requests e até
