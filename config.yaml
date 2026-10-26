@@ -1,0 +1,205 @@
+# ===========================================================================
+# ROBÔ DE LEILÃO — configuração
+# ===========================================================================
+
+banco: leiloes.db
+
+# 0 = estrito (só o ano de fabricação declarado).
+# 1 = tolera 1 ano pra fora, porque MUITA leiloeira publica o ano/modelo no
+#     campo de ano. Recomendo começar com 1 e apertar depois.
+ano_tolerancia: 1
+
+# Só avisa nesses status. BLOQUEADO fica gravado no banco mas não te incomoda.
+avisar_status: [APROVADO, VERIFICAR]
+
+# ---------------------------------------------------------------------------
+# FILTROS DE AVISO
+# ---------------------------------------------------------------------------
+# Lote filtrado continua gravado no banco (sai no --relatorio), só não avisa.
+# Lote sem UF/pátio/lance identificado passa: na dúvida, o robô avisa.
+filtros:
+  ufs: []                    # ex.: [PR, SC, SP]  — vazio = todas
+  patios_incluir: []         # trechos do nome do pátio/cidade — vazio = todos
+  patios_excluir: []         # ex.: ["foz do iguacu"]
+  # max_pct_fipe: 75         # custo total (lance+comissão+despesas) acima de
+                             # 75% da FIPE não avisa
+
+# ---------------------------------------------------------------------------
+# FIPE (API pública parallelum, ~500 consultas/dia — o robô guarda em cache)
+# ---------------------------------------------------------------------------
+fipe:
+  ativa: true
+  cache_dias: 15             # a FIPE só muda uma vez por mês
+
+# ---------------------------------------------------------------------------
+# ALVOS
+# ---------------------------------------------------------------------------
+# fipe.modelos: códigos da parallelum. Escolhe o 1º cujo `se` bate no texto do
+# lote; o item sem `se` é o padrão. O ano usado é o ano/MODELO (é o da FIPE).
+alvos:
+  - id: jetta-highline-tsi
+    descricao: VW Jetta Highline 2.0 16V TSI Turbo (fab. 2011-2015)
+    ano_fab_min: 2011
+    ano_fab_max: 2015
+    # preco_max: 55000
+    termos_obrigatorios:
+      - [jetta]
+      - [tsi, highline]       # aceita "JETTA 2.0 TSI" sem a palavra Highline:
+      - [tsi, "2.0"]          # nessa época o único Jetta 2.0 TSI era o Highline
+    termos_proibidos:
+      - comfortline
+      - trendline
+      - variant
+      - "1.4"                 # Jetta 1.4 TSI
+      - 250 tsi               # = 1.4 TSI (2016+)
+      - 350 tsi               # = GLI 2.0 (2019+)
+      - gli
+      - r-line
+    fipe:
+      marca: 59
+      modelos:
+        - {codigo: 5514}      # JETTA Highline 2.0 TSI 16V 4p Tiptronic
+
+  - id: civic-lxr-20
+    descricao: Honda Civic LXR 2.0 16V i-VTEC (fab. 2013-2016)
+    ano_fab_min: 2013
+    ano_fab_max: 2016
+    # preco_max: 60000        # opcional: lance acima disso grava mas não avisa
+    termos_obrigatorios:
+      - [civic]
+      - [lxr]                 # LXR nessa geração é sempre 2.0: não exige o motor
+    termos_proibidos:         # no título (muito Detran publica só "CIVIC LXR")
+      - "1.8"
+      - lxs
+      - exs
+      - exr
+      - si
+      - type r
+    fipe:
+      marca: 25
+      modelos:
+        - {codigo: 6326}      # Civic Sedan LXR 2.0 Flexone 16V Aut.
+
+  - id: civic-lxs-18
+    descricao: Honda Civic LXS 1.8 16V i-VTEC (fab. 2012-2016)
+    ano_fab_min: 2012
+    ano_fab_max: 2016
+    # preco_max: 50000
+    termos_obrigatorios:
+      - [civic]
+      - [lxs]                 # LXS nessa geração é sempre 1.8
+    termos_proibidos:
+      - "2.0"
+      - lxr
+      - exs
+      - exr
+      - type r
+    fipe:
+      marca: 25
+      modelos:
+        - {codigo: 4011, se: [mec, manual]}   # Civic LXS 1.8 Mec.
+        - {codigo: 4010}                      # Civic LXS 1.8 Aut. (padrão)
+
+# ---------------------------------------------------------------------------
+# FONTES
+# ---------------------------------------------------------------------------
+# Cada leiloeira é só configuração. Veja o README (seção "Achando o endpoint")
+# pra adicionar outras.
+#
+# custos: comissão do leiloeiro e despesas fixas usadas no custo total quando
+# a página do lote não informa. `detalhe` abre a página do lote (só dos que
+# bateram com um alvo) pra ler descrição completa, pátio e custos reais.
+# ---------------------------------------------------------------------------
+fontes:
+
+  # ---- Freitas Leiloeiro (SP) — leilão, muito retomado de financeira ------
+  - nome: freitas
+    tipo: html
+    ativa: true
+    url: "https://www.freitasleiloeiro.com.br/Leiloes/PesquisarLotes?Nome={termo}&Categoria=1&TipoLoteId=0&FaixaValor=0&Condicao=&PatioId=0&AnoModeloMin=0&AnoModeloMax=0&ArCondicionado=false&DirecaoAssistida=false&Tag=&ClienteSclId=0&PageNumber={pagina}&TopRows=48"
+    url_base: "https://www.freitasleiloeiro.com.br"
+    termos: [jetta, civic]     # busca ampla; o filtro fino é dos alvos
+    paginas: 3
+    pausa_segundos: 2
+    uf: SP                     # se a página do lote não disser o pátio
+    custos:
+      comissao_pct: 5
+      despesas: 2850           # valores típicos; o detalhe do lote sobrescreve
+    seletor_item: "div.cardlote"
+    seletores:
+      titulo: "div.cardLote-descVeic"
+      descricao: "div.cardLote-details"    # comitente: FINANCEIRA, BANCO...
+      preco: "div.cardLote-vlr"
+      encerramento: "div.cardLote-data"
+      url:
+        seletor: "a[href*='LoteDetalhes']"
+        atributo: href
+    detalhe:
+      inicio: "Descrição completa"
+      fim: "Abertura p/ lances"
+      local_regex: 'Retirada:\s*([^\n]+)'
+      comissao_regex: '(\d+(?:,\d+)?)\s*%\s*referente'
+      despesas_regex: 'R\$\s*([\d.,]+)\s*por conta do comprador'
+
+  # ---- PH Batidos (Curitiba/PR) — venda direta de batidos, preço fixo -----
+  # O card já traz a classificação (Pequena/Média Monta).
+  - nome: phbatidos
+    tipo: html
+    ativa: true
+    url: "https://www.phbatidos.com.br/search/{termo}/pagina.{pagina}"
+    url_base: "https://www.phbatidos.com.br"
+    termos: [marca.HONDA, marca.VOLKSWAGEN]
+    paginas: 4
+    pausa_segundos: 2
+    uf: PR
+    custos:
+      comissao_pct: 0          # loja: o preço é o preço
+      despesas: 0
+    seletor_item: "div.card"
+    seletores:
+      titulo:                  # o ano fica fora do título
+        - "h2.card__title"
+        - ".icon--calendar + strong"
+      descricao: "div.card__features"      # "HONDA - Outros - Média Monta"
+      preco: "div.card__sell__value"
+      local: "div.card__store__name"
+      url:
+        seletor: "a.card__content"
+        atributo: href
+
+  # ---- Copart — NÃO dá pra coletar automaticamente -----------------------
+  # O site é protegido por Incapsula (anti-robô): bloqueia requests e até
+  # navegador automatizado. Use os alertas de busca salva da própria Copart
+  # (crie a conta e salve a busca "civic lxr" etc.). Se exportar a lista em
+  # CSV, aponte uma fonte `tipo: arquivo` pra ela.
+  - nome: copart-csv
+    tipo: arquivo
+    ativa: false
+    caminho: exports/copart.csv
+    campos: {id_lote: lote, titulo: descricao, preco: lance, local: patio}
+
+  # ---- lotes fictícios, pra validar as regras sem rede ---------------------
+  - nome: exemplo-local
+    tipo: arquivo
+    ativa: false
+    caminho: exemplos/lotes_exemplo.json
+    campos:
+      id_lote: id
+      titulo: titulo
+      descricao: descricao
+      url: url
+      preco: lance_atual
+      local: patio
+      encerramento: encerra_em
+
+# ---------------------------------------------------------------------------
+# AVISOS
+# ---------------------------------------------------------------------------
+avisos:
+  console: true
+  # Telegram: prefira as variáveis de ambiente TELEGRAM_TOKEN e
+  # TELEGRAM_CHAT_ID — este arquivo vai pro GitHub público.
+  # telegram:
+  #   token: "123456:ABC..."
+  #   chat_id: "987654321"
+  # webhook: "https://seu-n8n.exemplo/webhook/leiloes"
