@@ -12,6 +12,28 @@ ano_tolerancia: 1
 # Só avisa nesses status. BLOQUEADO fica gravado no banco mas não te incomoda.
 avisar_status: [APROVADO, VERIFICAR]
 
+# Quando avisar de novo o mesmo lote. Padrão: só quando ele aparece pela 1ª vez.
+# Acrescente "preco" (lance mudou) e/ou "status" (classificação mudou) se quiser.
+avisar_mudancas: [novo]
+
+# ---------------------------------------------------------------------------
+# BOT DO TELEGRAM  (python main.py --bot)
+# ---------------------------------------------------------------------------
+bot:
+  alertas: true              # estado inicial; liga/desliga pelo menu do bot
+  alertas_minutos: 30        # de quanto em quanto tempo procura lote novo
+  cache_minutos: 10          # buscas pelo menu reaproveitam a coleta recente
+
+# Leiloeiras que bloqueiam robô (anti-bot): o menu mostra um botão que abre a
+# busca já preenchida no site, pra você conferir na mão. {termo} = `busca` do alvo.
+links_manuais:
+  - nome: Copart
+    url: "https://www.copart.com.br/lotSearchResults/?free=true&query={termo}"
+  - nome: MGL
+    url: "https://www.mgl.com.br/busca/#Engine=Start&Pagina=1&Busca={termo}&Mapa=&ID_Categoria=0"
+  - nome: Milan
+    url: "https://www.milanleiloes.com.br/"
+
 # ---------------------------------------------------------------------------
 # FILTROS DE AVISO
 # ---------------------------------------------------------------------------
@@ -38,6 +60,9 @@ fipe:
 # lote; o item sem `se` é o padrão. O ano usado é o ano/MODELO (é o da FIPE).
 alvos:
   - id: jetta-highline-tsi
+    categoria: carro
+    rotulo: "VW Jetta Highline 2.0 TSI (2011-15)"   # texto do botão no menu
+    busca: "jetta tsi"                                 # termo dos links manuais
     descricao: VW Jetta Highline 2.0 16V TSI Turbo (fab. 2011-2015)
     ano_fab_min: 2011
     ano_fab_max: 2015
@@ -61,6 +86,9 @@ alvos:
         - {codigo: 5514}      # JETTA Highline 2.0 TSI 16V 4p Tiptronic
 
   - id: civic-lxr-20
+    categoria: carro
+    rotulo: "Honda Civic LXR 2.0 (2013-16)"
+    busca: "civic lxr"
     descricao: Honda Civic LXR 2.0 16V i-VTEC (fab. 2013-2016)
     ano_fab_min: 2013
     ano_fab_max: 2016
@@ -81,6 +109,9 @@ alvos:
         - {codigo: 6326}      # Civic Sedan LXR 2.0 Flexone 16V Aut.
 
   - id: civic-lxs-18
+    categoria: carro
+    rotulo: "Honda Civic LXS 1.8 (2012-16)"
+    busca: "civic lxs"
     descricao: Honda Civic LXS 1.8 16V i-VTEC (fab. 2012-2016)
     ano_fab_min: 2012
     ano_fab_max: 2016
@@ -173,9 +204,10 @@ fontes:
         seletor: "img.card__image"
         atributo: [data-src, src]   # foto carrega por lazy load
 
-  # ---- Copart — NÃO dá pra coletar automaticamente -----------------------
-  # O site é protegido por Incapsula (anti-robô): bloqueia requests e até
-  # navegador automatizado. Use os alertas de busca salva da própria Copart
+  # ---- Copart, MGL e Milan — NÃO dá pra coletar automaticamente ----------
+  # Copart (Incapsula), MGL e Milan (Cloudflare) bloqueiam robô: recusam
+  # requests e até navegador automatizado. No bot elas aparecem como botões
+  # de busca manual (veja links_manuais). Use os alertas de busca salva da própria Copart
   # (crie a conta e salve a busca "civic lxr" etc.). Se exportar a lista em
   # CSV, aponte uma fonte `tipo: arquivo` pra ela.
   - nome: copart-csv

@@ -13,3 +13,4 @@ exports/
 config.local.yaml
 
 .playwright-mcp/
+*.log

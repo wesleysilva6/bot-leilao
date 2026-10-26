@@ -1,11 +1,12 @@
 """Testes das regras. Roda sem rede: python testes_matcher.py"""
 
 import yaml
-from leilao_monitor.estado import formatar
+from leilao_monitor.bot import Bot, ordenar
+from leilao_monitor.estado import Avisador, Memoria, formatar
 from leilao_monitor.fipe import Fipe, custo_total
 from leilao_monitor.fontes import Lote, _preco, extrair_uf
-from main import motivo_silencio
-from leilao_monitor.matcher import Alvo, avaliar, classificar_restricoes, extrair_anos
+from main import Resultado, motivo_silencio
+from leilao_monitor.matcher import Alvo, Avaliacao, avaliar, classificar_restricoes, extrair_anos
 
 ALVOS = [
     Alvo(
@@ -185,7 +186,36 @@ def main() -> int:
             falhas += 1
             print(f"FALHOU mensagem: {nome}\n{msg.texto}")
 
-    total = len(CASOS) + 7 + 1 + 4 + 3 + 5 + 2 + 1 + 6
+    # bot: telas, ordenacao e chat nao autorizado (Telegram simulado)
+    cfg = yaml.safe_load(open("config.yaml", encoding="utf-8"))
+    memoria = Memoria(":memory:")
+    bot = Bot(cfg, Avisador({"console": False, "telegram": {"token": "x", "chat_id": "123"}}),
+              memoria, analisar=lambda: ([], {}), passada=lambda: {})
+    chamadas = []
+    bot._api = lambda metodo, **p: chamadas.append((metodo, p)) or {"ok": True, "result": {}}
+
+    _, teclado = bot.tela_categoria("carro")
+    botoes = [b["callback_data"] for linha in teclado["inline_keyboard"] for b in linha]
+    texto_moto, _ = bot.tela_categoria("moto")
+    bot._tratar({"message": {"chat": {"id": 999}, "text": "oi"}})   # intruso
+    bot._tratar({"message": {"chat": {"id": 123}, "text": "oi"}})   # dono
+    r = lambda st, pct, preco: Resultado(Lote("f", st + str(pct), "t", "", preco=preco),
+                                         Avaliacao("a", True, st, 2014, 2014), {"pct_fipe": pct}, None, None)
+    ordem = [x.lote.id_lote for x in ordenar([r("VERIFICAR", 40, 1), r("APROVADO", 70, 1),
+                                               r("APROVADO", None, 1), r("APROVADO", 50, 1)])]
+    for ok, nome in [
+        (botoes == ["alvo:jetta-highline-tsi", "alvo:civic-lxr-20", "alvo:civic-lxs-18",
+                    "todos:carro", "menu"], "menu de carros"),
+        ("Nenhum modelo" in texto_moto, "moto vazia"),
+        ([(p["chat_id"], "reply_markup" in p) for _, p in chamadas] == [("999", False), ("123", True)],
+         "intruso nao recebe menu"),
+        (ordem == ["APROVADO50", "APROVADO70", "APROVADONone", "VERIFICAR40"], "ordenacao"),
+    ]:
+        if not ok:
+            falhas += 1
+            print(f"FALHOU bot: {nome}")
+
+    total = len(CASOS) + 7 + 1 + 4 + 3 + 5 + 2 + 1 + 6 + 4
     print(f"\n{total - falhas}/{total} testes passaram")
     return 1 if falhas else 0
 

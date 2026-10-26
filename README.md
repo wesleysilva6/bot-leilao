@@ -44,7 +44,9 @@ bloqueado.
 |---|---|---|
 | **Freitas Leiloeiro** (SP) | leilão | lotes de Jetta/Civic; abre a página do lote e lê pátio, comissão e despesas |
 | **PH Batidos** (Curitiba/PR) | venda direta, preço fixo | estoque Honda/VW; o card já traz a monta |
-| **Copart** | — | **não coletável**: protegida por anti-robô (Incapsula). Use os alertas de busca salva da própria Copart |
+| **Copart** | — | **não coletável**: anti-robô (Incapsula). No bot vira botão de busca manual |
+| **MGL** | — | **não coletável**: anti-robô (Cloudflare). No bot vira botão de busca manual |
+| **Milan** | — | **não coletável**: anti-robô (Cloudflare Turnstile). No bot vira botão |
 
 ## FIPE e custo total
 
@@ -87,6 +89,34 @@ sem UF, pátio ou lance identificado passa pelo filtro: na dúvida, o robô avis
 6. `python main.py --telegram-teste` → deve chegar uma mensagem.
 
 Nunca coloque o token no `config.yaml`: o repositório é público.
+
+### Bot com menu (`python main.py --bot`)
+
+Mande qualquer mensagem (ou `/menu`) pro bot:
+
+```
+🤖 Robô de Leilão
+[🚗 Carros] [🏍️ Motos]
+[🔕 Desligar alertas]
+   └─ 🚗 Carros → [VW Jetta Highline 2.0 TSI] [Civic LXR 2.0] [Civic LXS 1.8] [🔎 Todos]
+         └─ busca em todas as leiloeiras → resumo + cada lote com foto
+            (aprovados primeiro, depois menor % da FIPE)
+            [🔄 Buscar de novo] [⬅️ Menu]  [🔗 Copart] [🔗 MGL] [🔗 Milan]
+```
+
+- Só responde ao seu `TELEGRAM_CHAT_ID`; qualquer outra pessoa recebe
+  "Este robô é privado".
+- Alertas automáticos: liga/desliga no menu. Com eles ligados, a cada
+  `bot.alertas_minutos` o robô procura e avisa **só lote novo** (nada de
+  repetição quando o lance muda — veja `avisar_mudancas`).
+- Uma coleta serve pra todos os modelos e é reaproveitada por
+  `bot.cache_minutos`; "Buscar de novo" força uma coleta nova.
+- Copart, MGL e Milan bloqueiam robô, então viram botões que abrem a busca já
+  preenchida no site.
+- Pra motos (ou outra categoria), adicione um alvo com `categoria: moto`,
+  `rotulo` e `busca` no `config.yaml`; o botão aparece sozinho.
+- Rode **um** bot por vez: dois processos com o mesmo token brigam pelas
+  mensagens.
 
 Cada aviso chega como a **1ª foto do veículo** com a mensagem na legenda:
 status, modelo e ano, cidade do pátio, lance, custo total, FIPE, pontos a favor,
@@ -187,6 +217,7 @@ leilao_monitor/matcher.py    reconhecimento de modelo/ano + regras de restriçã
 leilao_monitor/fontes.py     adaptadores json / html / arquivo
 leilao_monitor/estado.py     memória SQLite + Telegram/webhook
 leilao_monitor/fipe.py       consulta FIPE com cache + custo total
-testes_matcher.py            54 testes das regras, filtros e FIPE
+leilao_monitor/bot.py        bot do Telegram com menu, busca sob demanda e alertas
+testes_matcher.py            64 testes (regras, filtros, FIPE, mensagem e bot)
 exemplos/lotes_exemplo.json  lotes fictícios pra validar sem rede
 ```

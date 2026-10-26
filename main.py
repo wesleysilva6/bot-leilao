@@ -16,15 +16,19 @@ import json
 import logging
 import sys
 import time
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
 from leilao_monitor import fontes as mod_fontes
+from leilao_monitor.bot import Bot
 from leilao_monitor.estado import Avisador, Memoria, descobrir_chats, formatar
 from leilao_monitor.fipe import Fipe, custo_total
-from leilao_monitor.matcher import Alvo, avaliar, normalizar
+from leilao_monitor.fontes import Lote
+from leilao_monitor.matcher import Alvo, Avaliacao, avaliar, normalizar
 
 # Console do Windows é cp1252 e quebra no emoji do aviso (✅ ⚠️ ⛔).
 for _fluxo in (sys.stdout, sys.stderr):
@@ -93,14 +97,25 @@ def motivo_silencio(lote, alvo: Alvo, valores: dict, filtros: dict) -> Optional[
     return None
 
 
-def passada(cfg: dict, alvos: list[Alvo], memoria: Memoria, avisador: Avisador,
-            fipe: Optional[Fipe] = None) -> dict:
+@dataclass
+class Resultado:
+    lote: Lote
+    av: Avaliacao
+    valores: dict
+    mudanca: Optional[str]    # 'novo' | 'preco' | 'status' | None
+    silencio: Optional[str]   # por que os filtros seguram o aviso (None = passa)
+
+
+def analisar(cfg: dict, alvos: list[Alvo], memoria: Memoria,
+             fipe: Optional[Fipe] = None) -> tuple[list[Resultado], dict]:
+    """Coleta todas as fontes ativas, avalia, completa com detalhe e FIPE e
+    grava no banco. Não avisa ninguém: isso é com a passada e com o bot."""
     tolerancia = cfg.get("ano_tolerancia", 0)
-    avisar_status = set(cfg.get("avisar_status", ["APROVADO", "VERIFICAR"]))
     filtros = cfg.get("filtros") or {}
     por_id = {a.id: a for a in alvos}
     fipe_alvo = {a["id"]: a.get("fipe") for a in cfg["alvos"]}
-    contagem = {"coletados": 0, "casaram": 0, "avisos": 0, "silenciados": 0}
+    contagem = {"coletados": 0, "casaram": 0}
+    resultados: dict[str, Resultado] = {}  # por chave: o mesmo lote não aparece 2x
 
     for cfg_fonte in cfg.get("fontes", []):
         if not cfg_fonte.get("ativa", True):
@@ -115,6 +130,8 @@ def passada(cfg: dict, alvos: list[Alvo], memoria: Memoria, avisador: Avisador,
         try:
             for lote in fonte.coletar():
                 contagem["coletados"] += 1
+                if lote.chave in resultados:
+                    continue
                 # um lote com problema não pode derrubar o resto da fonte
                 try:
                     av = avaliar(lote.texto_completo, alvos, ano_tolerancia=tolerancia)
@@ -129,20 +146,37 @@ def passada(cfg: dict, alvos: list[Alvo], memoria: Memoria, avisador: Avisador,
                     contagem["casaram"] += 1
                     valores = comparar_fipe(lote, av, fipe, fipe_alvo.get(av.alvo_id))
                     mudanca = memoria.registrar(lote, av, valores)
-                    if not mudanca or av.status not in avisar_status:
-                        continue
                     silencio = motivo_silencio(lote, por_id[av.alvo_id], valores, filtros)
-                    if silencio:
-                        log.info("sem aviso (%s): %s", silencio, lote.titulo)
-                        contagem["silenciados"] += 1
-                        continue
-                    avisador.enviar(formatar(lote, av, mudanca, valores,
-                                             por_id[av.alvo_id].descricao))
-                    contagem["avisos"] += 1
+                    resultados[lote.chave] = Resultado(lote, av, valores, mudanca, silencio)
                 except Exception as e:
                     log.error("erro no lote %s de %s: %s", lote.id_lote, fonte.nome, e)
         except Exception as e:
             log.error("erro coletando %s: %s", fonte.nome, e)
+
+    return list(resultados.values()), contagem
+
+
+def passada(cfg: dict, alvos: list[Alvo], memoria: Memoria, avisador: Avisador,
+            fipe: Optional[Fipe] = None) -> dict:
+    """Uma rodada do monitor: avisa só o que é novidade e passa nos filtros."""
+    avisar_status = set(cfg.get("avisar_status", ["APROVADO", "VERIFICAR"]))
+    # padrão: só lote novo. Acrescente 'preco' e/ou 'status' no config pra ser
+    # avisado de novo quando o lance ou a classificação mudar.
+    avisar_mudancas = set(cfg.get("avisar_mudancas", ["novo"]))
+    por_id = {a.id: a for a in alvos}
+
+    resultados, contagem = analisar(cfg, alvos, memoria, fipe)
+    contagem.update(avisos=0, silenciados=0)
+    for r in resultados:
+        if r.mudanca not in avisar_mudancas or r.av.status not in avisar_status:
+            continue
+        if r.silencio:
+            log.info("sem aviso (%s): %s", r.silencio, r.lote.titulo)
+            contagem["silenciados"] += 1
+            continue
+        avisador.enviar(formatar(r.lote, r.av, r.mudanca, r.valores,
+                                 por_id[r.av.alvo_id].descricao))
+        contagem["avisos"] += 1
 
     log.info(
         "fim da passada — %s lotes vistos, %s bateram com os alvos, %s avisos, "
@@ -206,6 +240,8 @@ def main() -> int:
                    help="mostra o chat_id de quem mandou mensagem pro bot e sai")
     p.add_argument("--telegram-teste", action="store_true",
                    help="manda uma mensagem de teste pro Telegram e sai")
+    p.add_argument("--bot", action="store_true",
+                   help="bot do Telegram com menu de busca + alertas automáticos")
     args = p.parse_args()
 
     cfg = carregar_config(args.config)
@@ -235,7 +271,14 @@ def main() -> int:
     fipe = Fipe(memoria.con, cfg_fipe) if cfg_fipe.get("ativa", True) else None
 
     try:
-        if args.loop:
+        if args.bot:
+            bot = Bot(
+                cfg, avisador, memoria,
+                analisar=partial(analisar, cfg, alvos, memoria, fipe),
+                passada=partial(passada, cfg, alvos, memoria, avisador, fipe),
+            )
+            bot.rodar()
+        elif args.loop:
             log.info("modo contínuo: a cada %ss (ctrl+c pra parar)", args.loop)
             while True:
                 passada(cfg, alvos, memoria, avisador, fipe)

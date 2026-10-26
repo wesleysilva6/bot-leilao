@@ -198,8 +198,10 @@ def formatar(lote, avaliacao, motivo_aviso: str, valores: Optional[dict] = None,
     e = html.escape
     emoji, status = _STATUS.get(avaliacao.status, ("•", avaliacao.status))
 
+    # resultado de busca no menu não precisa dizer "novo lote"
+    motivo = "" if motivo_aviso == "busca" else f"  ·  {_MOTIVO.get(motivo_aviso, motivo_aviso)}"
     linhas = [
-        f"{emoji} <b>{status}</b>  ·  {_MOTIVO.get(motivo_aviso, motivo_aviso)}",
+        f"{emoji} <b>{status}</b>{motivo}",
         f"<b>{e(lote.titulo)}</b>",
         "",
     ]
@@ -253,14 +255,16 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}/{metodo}"
 LIMITE_LEGENDA = 1024  # Telegram: legenda de foto; texto comum vai até 4096
 
 
-def _telegram(token: str, metodo: str, arquivos: Optional[dict] = None, **payload) -> dict:
-    """Chama a API do Telegram. O erro nunca inclui a URL: ela contém o token."""
+def _telegram(token: str, metodo: str, arquivos: Optional[dict] = None,
+              espera: int = 15, **payload) -> dict:
+    """Chama a API do Telegram. O erro nunca inclui a URL: ela contém o token.
+    espera: timeout HTTP (o getUpdates do bot segura a conexão por até 25 s)."""
     url = TELEGRAM_API.format(token=token, metodo=metodo)
     try:
         if arquivos:  # upload multipart: campos vão como form-data
-            r = requests.post(url, data=payload, files=arquivos, timeout=30)
+            r = requests.post(url, data=payload, files=arquivos, timeout=max(espera, 30))
         else:
-            r = requests.post(url, json=payload, timeout=15)
+            r = requests.post(url, json=payload, timeout=espera)
         dados = r.json()
     except Exception as e:
         return {"ok": False, "description": f"sem resposta ({type(e).__name__})"}
